@@ -10,16 +10,39 @@ from mmdet.core import results2json_videoseg, ytvos_eval
 from mmdet.datasets import build_dataloader
 from mmdet.models import build_detector, detectors
 
+import time
 
-def single_test(model, data_loader, show=False, save_path=''):
+
+def single_test(model, data_loader, show=False, save_path='', max_frame_count=-1):
+    """
+    Arguments:
+        max_frame_count (int): max number of frames used in test. <=0 means test all frames.  
+    """
     model.eval()
     results = []
     dataset = data_loader.dataset
     prog_bar = mmcv.ProgressBar(len(dataset))
+
+    infer_time_acc = 0.0
+    frame_count = 0
+
     for i, data in enumerate(data_loader):
+        # Added
+        print('\ndata index i=', i)
+        print('type(data)=', type(data))
+        print('shape of images', data['img'][0].size())
+        infer_start_time = time.time()
+
         with torch.no_grad():
             result = model(return_loss=False, rescale=not show, **data)
+
         results.append(result)
+
+        # Added
+        infer_time_acc += time.time() - infer_start_time
+        frame_count += data['img'][0].size(0) 
+        if max_frame_count > 0 and frame_count >= max_frame_count:
+            break
 
         if show:
             model.module.show_result(data, result, dataset.img_norm_cfg,
@@ -31,6 +54,10 @@ def single_test(model, data_loader, show=False, save_path=''):
         batch_size = data['img'][0].size(0)
         for _ in range(batch_size):
             prog_bar.update()
+
+    # Added
+    print(f'Total infer_time: {infer_time_acc}, frame_count: {frame_count}, FPS: {frame_count/infer_time_acc}')
+        
     return results
 
 
@@ -65,7 +92,16 @@ def parse_args():
         choices=['bbox', 'segm'],
         help='eval types')
     parser.add_argument('--show', action='store_true', help='show results')
+
+    ## Added. Customized command line arguments below.
+    parser.add_argument('--test_mode', action='store_true', help='If enable, in test mode (just test infer fps).')
+    parser.add_argument('--max_frame_count', type=int, default=1080,
+        help='Only valid in test mode, the number of frames used to test. <=0 means all frame')
+    parser.add_argument('--ann_file', help='Usually used in test mode. If on, use this as ann file path instead of that in config file.')
+    parser.add_argument('--img_prefix', help='Usually used in test mode. If on, use this as image path instead of that in config file.')
+
     args = parser.parse_args()
+
     return args
 
 
@@ -81,6 +117,12 @@ def main():
         torch.backends.cudnn.benchmark = True
     cfg.model.pretrained = None
     cfg.data.test.test_mode = True
+
+    # Added. Reset the path to annotation and test images.
+    if args.ann_file:
+        cfg.data.test.ann_file = args.ann_file
+    if args.img_prefix:
+        cfg.data.test.img_prefix = args.img_prefix
 
     dataset = obj_from_dict(cfg.data.test, datasets, dict(test_mode=True))
     assert args.gpus == 1
@@ -99,7 +141,13 @@ def main():
     if args.load_result:
         outputs = mmcv.load(args.out)
     else:
-        outputs = single_test(model, data_loader, args.show, save_path=args.save_path)
+        max_frame_count = args.max_frame_count if args.test_mode else -1
+        outputs = single_test(model, data_loader, args.show, save_path=args.save_path, max_frame_count=max_frame_count)
+
+    # Added.
+    # If test model, exit; otherwise, will fails.
+    if args.test_mode:
+        return
 
     if args.out:
         if not args.load_result:
