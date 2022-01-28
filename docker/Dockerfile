@@ -11,7 +11,7 @@ RUN pip install --upgrade pip \
 && pip install cython \
 && pip install git+https://github.com/youtubevos/cocoapi.git#"egg=pycocotools&subdirectory=PythonAPI"
 
-# Before is for user specific. Change user/group name/id according to your case.
+# Below is for user specific. Change user/group name/id according to your case.
 WORKDIR /home/us000110
 
 RUN groupadd -g 10000 oppous \
