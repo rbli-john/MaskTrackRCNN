@@ -1,0 +1,5 @@
+pytorch=0.4.1
+torchvision
+cudatoolkit-dev=9.2
+cython
+git+https://github.com/youtubevos/cocoapi.git#"egg=pycocotools&subdirectory=PythonAPI"
